@@ -75,11 +75,11 @@ Library
         Data.HashPSQ
         Data.IntPSQ
         Data.OrdPSQ
-    Other-modules:
-        Data.BitUtil
         Data.HashPSQ.Internal
         Data.IntPSQ.Internal
         Data.OrdPSQ.Internal
+    Other-modules:
+        Data.BitUtil
 
 Benchmark psqueues-benchmarks
     Type:           exitcode-stdio-1.0

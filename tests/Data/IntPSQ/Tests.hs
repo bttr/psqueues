@@ -9,6 +9,7 @@ import           Test.Framework                       (Test)
 import           Test.Framework.Providers.HUnit       (testCase)
 import           Test.Framework.Providers.QuickCheck2 (testProperty)
 import           Test.HUnit                           (Assertion, assert)
+import           Test.QuickCheck                      (NonNegative(NonNegative))
 
 import           Data.IntPSQ.Internal
 import           Data.PSQ.Class.Gen
@@ -20,17 +21,21 @@ import           Data.PSQ.Class.Util
 
 tests :: [Test]
 tests =
-    [ testCase     "hasBadNils"     test_hasBadNils
+    [ testCase     "hasBadNils"           test_hasBadNils
     , testProperty "unsafeInsertIncreasePriority"
-                                    prop_unsafeInsertIncreasePriority
+                                          prop_unsafeInsertIncreasePriority
     , testProperty "unsafeInsertIncreasePriorityView"
-                                    prop_unsafeInsertIncreasePriorityView
+                                          prop_unsafeInsertIncreasePriorityView
     , testProperty "unsafeInsertWithIncreasePriority"
-                                    prop_unsafeInsertWithIncreasePriority
+                                          prop_unsafeInsertWithIncreasePriority
     , testProperty "unsafeInsertWithIncreasePriorityView"
-                                    prop_unsafeInsertWithIncreasePriorityView
+                                          prop_unsafeInsertWithIncreasePriorityView
     , testProperty "unsafeLookupIncreasePriority"
-                                    prop_unsafeLookupIncreasePriority
+                                          prop_unsafeLookupIncreasePriority
+    , testProperty "takeMin_length"       prop_takeMin_length
+    , testProperty "takeMin_increasing"   prop_takeMin_increasing
+    , testProperty "insertWith_const"     prop_insertWith_const
+    , testProperty "insertWith_flipconst" prop_insertWith_flipconst
     ]
 
 
@@ -114,3 +119,23 @@ prop_unsafeLookupIncreasePriority =
         in valid t' &&
             lookup k t' == expect &&
             lookup k t  == mbPx
+
+prop_takeMin_length :: NonNegative Int -> IntPSQ Int Char -> Bool
+prop_takeMin_length (NonNegative n) t = length (takeMin n t) <= n
+
+prop_takeMin_increasing :: NonNegative Int -> IntPSQ Int Char -> Bool
+prop_takeMin_increasing (NonNegative n) t = isSorted [p | (_, p, _) <- takeMin n t]
+  where
+    isSorted (x : y : zs) = x <= y && isSorted (y : zs)
+    isSorted [_]          = True
+    isSorted []           = True
+
+prop_insertWith_const :: (Int,Int,Char) -> IntPSQ Int Char -> Bool
+prop_insertWith_const (k,p,v) t = lookup k (i1 . i2 $ t) == Just (p + 1,succ v) where
+  i1 = insertWith (const const) k (p + 1) (succ v)
+  i2 = insert k p v
+
+prop_insertWith_flipconst :: (Int,Int,Char) -> IntPSQ Int Char -> Bool
+prop_insertWith_flipconst (k,p,v) t = lookup k (i1 . i2 $ t) == Just (p,v) where
+  i1 = insertWith (const $ flip const) k (p + 1) (succ v)
+  i2 = insert k p v

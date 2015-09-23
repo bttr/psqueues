@@ -14,6 +14,7 @@ module Data.HashPSQ
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -21,6 +22,7 @@ module Data.HashPSQ
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/update
     , delete

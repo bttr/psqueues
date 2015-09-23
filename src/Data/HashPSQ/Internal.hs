@@ -1,5 +1,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 module Data.HashPSQ.Internal
     ( -- * Type
@@ -13,6 +15,7 @@ module Data.HashPSQ.Internal
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -20,6 +23,7 @@ module Data.HashPSQ.Internal
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/update
     , delete
@@ -56,6 +60,8 @@ import           Data.Hashable
 import           Data.Maybe      (isJust)
 import           Prelude         hiding (foldr, lookup, map, null)
 import qualified Data.List       as List
+import           Data.Typeable   (Typeable)
+import           GHC.Generics    (Generic)
 
 import qualified Data.IntPSQ.Internal as IntPSQ
 import qualified Data.OrdPSQ          as OrdPSQ
@@ -65,7 +71,7 @@ import qualified Data.OrdPSQ          as OrdPSQ
 ------------------------------------------------------------------------------
 
 data Bucket k p v = B !k !v !(OrdPSQ.OrdPSQ k p v)
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 -- | Smart constructor which takes care of placing the minimum element directly
 -- in the 'Bucket'.
@@ -91,7 +97,7 @@ instance (NFData k, NFData p, NFData v) => NFData (Bucket k p v) where
 -- | A priority search queue with keys of type @k@ and priorities of type @p@
 -- and values of type @v@. It is strict in keys, priorities and values.
 newtype HashPSQ k p v = HashPSQ (IntPSQ.IntPSQ p (Bucket k p v))
-    deriving (NFData, Show)
+    deriving (NFData,Show,Typeable,Generic)
 
 instance (Eq k, Eq p, Eq v, Hashable k, Ord k, Ord p) =>
             Eq (HashPSQ k p v) where
@@ -150,6 +156,13 @@ findMin (HashPSQ ipsq) = case IntPSQ.findMin ipsq of
     Nothing              -> Nothing
     Just (_, p, B k x _) -> Just (k, p, x)
 
+-- | The /k/ elements with the lowest priority.
+takeMin :: (Hashable k, Ord k, Ord p) => Int -> HashPSQ k p v -> [(k,p,v)]
+takeMin 0 _   = []
+takeMin n psq = case minView psq of
+  Nothing           -> []
+  Just (k,p,v,psq') -> (k,p,v) : takeMin (pred n) psq'
+
 
 --------------------------------------------------------------------------------
 -- Construction
@@ -193,6 +206,15 @@ insert k p v (HashPSQ ipsq) =
         | otherwise                     =
             Just (p , B k  v  (OrdPSQ.insert k' p' v' os))
 
+-- | /O(log n)/ Insert a new key, priority and value into the queue. If the key is
+-- already present in the queue, the new priority and value are combined with the
+-- existing priority and value using the supplied function.
+{-# INLINABLE insertWith #-}
+insertWith :: (Ord k, Hashable k, Ord p)
+  => (k -> (p,v) -> (p,v) -> (p,v)) -> k -> p -> v -> HashPSQ k p v -> HashPSQ k p v
+insertWith combine k p v = snd . alter ((,) () . change) k where
+  change Nothing   = Just (p,v)
+  change (Just t') = Just $ combine k (p,v) t'
 
 --------------------------------------------------------------------------------
 -- Delete/update

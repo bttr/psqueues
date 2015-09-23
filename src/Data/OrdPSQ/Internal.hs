@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE Trustworthy         #-}
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE DeriveGeneric       #-}
 module Data.OrdPSQ.Internal
     ( -- * Type
       OrdPSQ (..)
@@ -13,6 +15,7 @@ module Data.OrdPSQ.Internal
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -20,6 +23,7 @@ module Data.OrdPSQ.Internal
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/Update
     , delete
@@ -69,6 +73,8 @@ import           Control.DeepSeq (NFData(rnf))
 import           Data.Maybe      (isJust)
 import           Data.Foldable   (Foldable (foldr))
 import qualified Data.List       as List
+import           Data.Typeable   (Typeable)
+import           GHC.Generics    (Generic)
 
 --------------------------------------------------------------------------------
 -- Types
@@ -76,7 +82,7 @@ import qualified Data.List       as List
 
 -- | @E k p v@ binds the key @k@ to the value @v@ with priority @p@.
 data Elem k p v = E !k !p !v
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 instance (NFData k, NFData p, NFData v) => NFData (Elem k p v) where
     rnf (E k p v) = rnf k `seq` rnf p `seq` rnf v
@@ -88,7 +94,7 @@ data OrdPSQ k p v
     | Winner !(Elem k p v)
              !(LTree k p v)
              !k
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 instance (NFData k, NFData p, NFData v) => NFData (OrdPSQ k p v) where
     rnf Void           = ()
@@ -123,7 +129,7 @@ data LTree k p v
                             !(LTree k p v)
                             !k              -- split key
                             !(LTree k p v)
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 instance (NFData k, NFData p, NFData v) => NFData (LTree k p v) where
     rnf Start              = ()
@@ -173,6 +179,12 @@ findMin :: OrdPSQ k p v -> Maybe (k, p, v)
 findMin Void                   = Nothing
 findMin (Winner (E k p v) _ _) = Just (k, p, v)
 
+-- | The /k/ elements with the lowest priority.
+takeMin :: (Ord k,Ord p) => Int -> OrdPSQ k p v -> [(k,p,v)]
+takeMin 0 _   = []
+takeMin n psq = case minView psq of
+  Nothing           -> []
+  Just (k,p,v,psq') -> (k,p,v) : takeMin (pred n) psq'
 
 --------------------------------------------------------------------------------
 -- Construction
@@ -196,13 +208,21 @@ singleton k p v = Winner (E k p v) Start k
 -- with the supplied priority and value.
 {-# INLINABLE insert #-}
 insert :: (Ord k, Ord p) => k -> p -> v -> OrdPSQ k p v -> OrdPSQ k p v
-insert k p v = go
+insert = insertWith (\ _ new old -> new)
+
+-- | /O(log n)/ Insert a new key, priority and value into the queue. If the key is
+-- already present in the queue, the new priority and value are combined with the
+-- existing priority and value using the supplied function.
+{-# INLINABLE insertWith #-}
+insertWith :: (Ord k, Ord p)
+  => (k -> (p,v) -> (p,v) -> (p,v)) -> k -> p -> v -> OrdPSQ k p v -> OrdPSQ k p v
+insertWith combine k p v = go
   where
     go t = case t of
         Void -> singleton k p v
         Winner (E k' p' v') Start _ -> case compare k k' of
             LT -> singleton k  p  v  `play` singleton k' p' v'
-            EQ -> singleton k  p  v
+            EQ -> uncurry (singleton k) $ combine k (p,v) (p',v')
             GT -> singleton k' p' v' `play` singleton k  p  v
         Winner e (RLoser _ e' tl m tr) m'
             | k <= m    -> go (Winner e tl m) `play` (Winner e' tr m')

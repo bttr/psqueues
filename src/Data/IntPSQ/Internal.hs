@@ -1,6 +1,8 @@
-{-# LANGUAGE BangPatterns  #-}
-{-# LANGUAGE CPP           #-}
-{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE BangPatterns       #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE UnboxedTuples      #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
 module Data.IntPSQ.Internal
     ( -- * Type
       Nat
@@ -14,6 +16,7 @@ module Data.IntPSQ.Internal
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -21,6 +24,7 @@ module Data.IntPSQ.Internal
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/update
     , delete
@@ -67,6 +71,8 @@ import           Data.List (foldl')
 import           Data.Maybe (isJust)
 import           Data.Word (Word)
 import           Data.Foldable (Foldable (foldr))
+import           Data.Typeable   (Typeable)
+import           GHC.Generics    (Generic)
 
 import qualified Data.List as List
 
@@ -101,7 +107,7 @@ data IntPSQ p v
     = Bin {-# UNPACK #-} !Key !p !v {-# UNPACK #-} !Mask !(IntPSQ p v) !(IntPSQ p v)
     | Tip {-# UNPACK #-} !Key !p !v
     | Nil
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 instance (NFData p, NFData v) => NFData (IntPSQ p v) where
     rnf (Bin _k p v _m l r) = rnf p `seq` rnf v `seq` rnf l `seq` rnf r
@@ -206,6 +212,13 @@ findMin t = case t of
     Tip k p x        -> Just (k, p, x)
     Bin k p x _ _ _  -> Just (k, p, x)
 
+-- | The /k/ elements with the lowest priority.
+takeMin :: Ord p => Int -> IntPSQ p v -> [(Int,p,v)]
+takeMin 0 _   = []
+takeMin n psq = case minView psq of
+  Nothing           -> []
+  Just (k,p,v,psq') -> (k,p,v) : takeMin (pred n) psq'
+
 
 ------------------------------------------------------------------------------
 --- Construction
@@ -229,6 +242,16 @@ singleton = Tip
 -- replaced with the supplied priority and value.
 insert :: Ord p => Int -> p -> v -> IntPSQ p v -> IntPSQ p v
 insert k p x t0 = unsafeInsertNew k p x (delete k t0)
+
+-- | /O(min(n,W))/ Insert a new key, priority and value into the queue. If the key is
+-- already present in the queue, the new priority and value are combined with the
+-- existing priority and value using the supplied function.
+{-# INLINABLE insertWith #-}
+insertWith :: (Ord p)
+  => (Int -> (p,v) -> (p,v) -> (p,v)) -> Int -> p -> v -> IntPSQ p v -> IntPSQ p v
+insertWith combine k p x = snd . alter ((,) () . change) k where
+  change Nothing   = Just (p,x)
+  change (Just t') = Just $ combine k (p,x) t'
 
 -- | Internal function to insert a key that is *not* present in the priority
 -- queue.

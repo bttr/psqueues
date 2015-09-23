@@ -24,6 +24,7 @@ module Data.OrdPSQ
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -31,6 +32,7 @@ module Data.OrdPSQ
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/Update
     , delete

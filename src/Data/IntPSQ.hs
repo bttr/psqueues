@@ -17,6 +17,7 @@ module Data.IntPSQ
     , member
     , lookup
     , findMin
+    , takeMin
 
       -- * Construction
     , empty
@@ -24,6 +25,7 @@ module Data.IntPSQ
 
       -- * Insertion
     , insert
+    , insertWith
 
       -- * Delete/update
     , delete
